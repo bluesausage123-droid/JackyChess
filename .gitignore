@@ -1,0 +1,48 @@
+# ─── 機密 ─────────────────────────────────────
+# 這把 keystore 是 com.sunsichess.guanqi 的唯一身分,洩漏 = 別人能用你的名義發版
+android/keystore/
+android/keystore.properties
+# 任何 keystore 備份(本機路徑備份,放 backups/ 也別推上去)
+backups/
+
+# 工作日誌已於 2026-05-05 把 keystore 密碼置換為 SEE_PASSWORD_MANAGER 占位字,可公開
+# (若未來工作日誌再次寫入機密,記得補回擋住的規則)
+
+# ─── 本機環境 ──────────────────────────────
+android/local.properties
+
+# ─── Build 產物(可重 build,不需追蹤) ──
+node_modules/
+dist/*.aab
+android/.gradle/
+android/build/
+android/app/build/
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+android/captures/
+
+# ─── 其他工具暫存 ──────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+Thumbs.db
+*.log
+
+# ─── 教材 / 內部素材(版權 + 大檔,不公開)──
+*.pdf
+*.docx
+*.mp4
+333858.jpg
+新增 文字文件*.txt
+
+# ─── 內部 review / 廢棄程式 ────────────────
+gemini_review.py
+gemini_review_output*.md
+app.py
+網頁/
+
+# ─── 編輯器 / IDE 設定 ────────────────────
+.claude/
+.vscode/
+.idea/

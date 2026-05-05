@@ -1,0 +1,26 @@
+{
+  "name": "guanqi-xinjing",
+  "version": "1.0.0",
+  "private": true,
+  "description": "觀棋心徑 — 線上象棋卜卦 (Capacitor Android wrapper)",
+  "scripts": {
+    "build:jsx": "babel site/app.jsx --out-file site/vendor/js/app.js --presets=@babel/preset-react",
+    "build:icons": "py tools/make_icons.py",
+    "build:vendor": "py tools/vendor_deps.py",
+    "build:web": "npm run build:icons && npm run build:vendor && npm run build:jsx",
+    "cap:sync": "cap sync android",
+    "cap:open": "cap open android",
+    "android:bundle": "cd android && gradlew bundleRelease",
+    "android:assemble": "cd android && gradlew assembleRelease"
+  },
+  "devDependencies": {
+    "@babel/cli": "^7.25.0",
+    "@babel/core": "^7.25.0",
+    "@babel/preset-react": "^7.24.0"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.2.0",
+    "@capacitor/cli": "^6.2.0",
+    "@capacitor/core": "^6.2.0"
+  }
+}

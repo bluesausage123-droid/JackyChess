@@ -1,0 +1,13 @@
+{
+  "appId": "com.sunsichess.guanqi",
+  "appName": "觀棋心徑",
+  "webDir": "site",
+  "android": {
+    "allowMixedContent": false,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": false
+  },
+  "server": {
+    "androidScheme": "https"
+  }
+}

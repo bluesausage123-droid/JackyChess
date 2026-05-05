@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>觀棋心徑 - 線上象棋卜卦</title>
+    <meta name="description" content="JackyChess 線上象棋卜卦系統,五枚棋子為您指引人生方向。">
+
+    <!-- PWA / Android TWA -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#7f1d1d">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="觀棋心徑">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png">
+
+    <link rel="stylesheet" href="vendor/css/noto-serif-tc.css">
+
+    <!-- 緊急自救 + 環境偵測:
+         (a) 若用 file:// 直接雙擊檔案開啟 → 立刻顯示清楚的指引(本系統需 HTTP 伺服器才能運作)
+         (b) 若 8 秒內 React 仍未載入(CDN 失敗、SW 髒快取等)→ 清掉所有 SW + cache + reload 一次
+         (c) 二次仍失敗 → 顯示靜態錯誤訊息,絕不無限循環 -->
+    <script>
+    (function(){
+        // (a) file:// 偵測:Chrome 對 file:// 的 <script crossorigin> 行為不穩,直接給指引
+        if (location.protocol === 'file:') {
+            window.addEventListener('DOMContentLoaded', function(){
+                document.body.innerHTML =
+                    '<div style="max-width:560px;margin:60px auto;padding:30px;font-family:\'Noto Serif TC\',serif;color:#1c1917;line-height:1.8;border:2px solid #7f1d1d;border-radius:14px;background:#fff8f5">' +
+                    '<h2 style="font-size:20px;color:#7f1d1d;font-weight:900;margin-bottom:12px;text-align:center">⚠️ 請用網頁伺服器開啟</h2>' +
+                    '<p style="font-size:14px;margin-bottom:14px">本系統含 PWA 與 React,瀏覽器在 <code style="background:#f5f5f4;padding:2px 6px;border-radius:4px">file://</code> 模式下會擋掉必要的跨域腳本,因此<b>不能直接雙擊檔案</b>開啟。</p>' +
+                    '<p style="font-size:14px;margin-bottom:8px;font-weight:bold">最快的測試方式:</p>' +
+                    '<ol style="font-size:13px;color:#44403c;padding-left:22px;margin-bottom:14px">' +
+                    '<li>在這個資料夾開啟 PowerShell / 命令提示字元</li>' +
+                    '<li>輸入指令:<br/><code style="display:block;background:#1c1917;color:#fafaf9;padding:10px 12px;border-radius:6px;margin-top:6px;font-family:Consolas,monospace;font-size:12px">py -m http.server 8000</code></li>' +
+                    '<li>瀏覽器開啟:<br/><a href="http://localhost:8000/index.html" style="color:#7f1d1d;font-weight:bold">http://localhost:8000/index.html</a></li>' +
+                    '</ol>' +
+                    '<p style="font-size:12px;color:#78716c;border-top:1px solid #e7e5e4;padding-top:10px;margin-top:14px">部署到 GitHub Pages / Netlify / Vercel 等網址後,即可正常雙擊圖示開啟。</p>' +
+                    '</div>';
+            });
+            return; // 不再執行下方的自救/SW 註冊
+        }
+
+        // (b)(c) http(s):// 下的自救
+        var KEY = 'guanqi-recovery';
+        setTimeout(function(){
+            if (typeof React !== 'undefined' && typeof ReactDOM !== 'undefined') {
+                sessionStorage.removeItem(KEY);
+                return;
+            }
+            if (sessionStorage.getItem(KEY)) {
+                document.body.innerHTML =
+                    '<div style="padding:40px 20px;text-align:center;font-family:serif;color:#7f1d1d;line-height:1.7">' +
+                    '<h2 style="font-size:18px;margin-bottom:12px">無法載入頁面</h2>' +
+                    '<p style="color:#78716c;font-size:13px">請確認網路連線後重試,或從瀏覽器設定清除本網站資料(Cookie / SW / Cache)。</p>' +
+                    '</div>';
+                return;
+            }
+            sessionStorage.setItem(KEY, '1');
+            var noop = function(){};
+            var p1 = (navigator.serviceWorker
+                ? navigator.serviceWorker.getRegistrations().then(function(rs){
+                    return Promise.all(rs.map(function(r){ return r.unregister().catch(noop); }));
+                  })
+                : Promise.resolve()
+            ).catch(noop);
+            var p2 = (window.caches
+                ? caches.keys().then(function(ks){
+                    return Promise.all(ks.map(function(k){ return caches.delete(k).catch(noop); }));
+                  })
+                : Promise.resolve()
+            ).catch(noop);
+            Promise.all([p1, p2]).then(function(){ location.reload(); }, function(){ location.reload(); });
+        }, 8000);
+    })();
+    </script>
+
+    <script src="vendor/js/tailwindcss.js"></script>
+    <script src="vendor/js/react.production.min.js"></script>
+    <script src="vendor/js/react-dom.production.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Noto Serif TC', serif;
+            background-color: #f2f0e9;
+            background-image: radial-gradient(#d6d3d1 1px, transparent 1px);
+            background-size: 24px 24px;
+        }
+
+        @keyframes popIn {
+            0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+            100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+        }
+
+        .chess-piece {
+            width: 76px; height: 76px;
+            border-radius: 50%;
+            background: linear-gradient(145deg, #ffffff, #e6e6e6);
+            box-shadow: 4px 6px 10px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,1);
+            border: 4px solid #dcdcdc;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 40px; font-weight: 900;
+            position: absolute;
+            z-index: 10;
+            cursor: pointer;
+            user-select: none;
+            transition: all 0.2s ease-out;
+        }
+
+        @keyframes breathe {
+            0%   { transform: translate(-50%, -50%) scale(0.92); opacity: 0.85; }
+            50%  { transform: translate(-50%, -50%) scale(1.10); opacity: 1; }
+            100% { transform: translate(-50%, -50%) scale(0.92); opacity: 0.85; }
+        }
+        .shuffling-piece .chess-piece {
+            animation: breathe 0.8s infinite ease-in-out;
+            border-color: #b91c1c;
+            box-shadow: 0 0 28px rgba(185,28,28,0.45), 4px 6px 10px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,1);
+        }
+
+        @keyframes auraSpin {
+            from { transform: translate(-50%, -50%) rotate(0deg); }
+            to   { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+        .mystic-aura {
+            position: absolute;
+            top: 50%; left: 50%;
+            width: 280px; height: 280px;
+            border-radius: 50%;
+            border: 1px dashed rgba(185,28,28,0.25);
+            transform: translate(-50%, -50%);
+            animation: auraSpin 22s linear infinite;
+            pointer-events: none;
+        }
+        .mystic-aura.inner {
+            width: 200px; height: 200px;
+            border: 1px solid rgba(185,28,28,0.18);
+            animation-duration: 14s;
+            animation-direction: reverse;
+        }
+        @media (min-width: 640px) {
+            .mystic-aura { width: 340px; height: 340px; }
+            .mystic-aura.inner { width: 240px; height: 240px; }
+        }
+
+        @keyframes pulseGlow {
+            0%, 100% { opacity: 0.30; transform: translate(-50%,-50%) scale(0.95); }
+            50%      { opacity: 0.75; transform: translate(-50%,-50%) scale(1.10); }
+        }
+        .center-glow {
+            position: absolute;
+            top: 50%; left: 50%;
+            width: 150px; height: 150px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(254,202,202,0.85) 0%, rgba(254,202,202,0) 70%);
+            animation: pulseGlow 2s infinite ease-in-out;
+            pointer-events: none;
+        }
+
+        .orbit-piece {
+            position: absolute;
+            width: 46px; height: 46px;
+            border-radius: 50%;
+            background: linear-gradient(145deg, #ffffff, #f2eadb);
+            border: 2px solid #d6cfbf;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 22px; font-weight: 900;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+            opacity: 0.88;
+            transform: translate(-50%, -50%);
+            transition: left 0.18s linear, top 0.18s linear, opacity 0.18s linear;
+            pointer-events: none;
+            user-select: none;
+        }
+        @media (min-width: 640px) {
+            .orbit-piece { width: 56px; height: 56px; font-size: 26px; }
+        }
+
+        @keyframes dotFade {
+            0%, 80%, 100% { opacity: 0.2; }
+            40%           { opacity: 1; }
+        }
+        .dot-1 { animation: dotFade 1.4s infinite; }
+        .dot-2 { animation: dotFade 1.4s infinite 0.2s; }
+        .dot-3 { animation: dotFade 1.4s infinite 0.4s; }
+
+        .cross-line {
+            position: absolute;
+            top: 50%; left: 50%;
+            pointer-events: none;
+            opacity: 0.45;
+        }
+        .cross-line.h {
+            width: 220px; height: 1px;
+            transform: translate(-50%, -50%);
+            background: repeating-linear-gradient(to right, #b91c1c33 0 4px, transparent 4px 9px);
+        }
+        .cross-line.v {
+            width: 1px; height: 220px;
+            transform: translate(-50%, -50%);
+            background: repeating-linear-gradient(to bottom, #b91c1c33 0 4px, transparent 4px 9px);
+        }
+        @media (min-width: 640px) {
+            .cross-line.h { width: 260px; }
+            .cross-line.v { height: 260px; }
+        }
+
+        @media (min-width: 640px) { .chess-piece { width: 90px; height: 90px; font-size: 48px; } }
+
+        /* === 32 顆紫色星際棋幣(手動抽牌) ===========================
+           設計概念:夜空 / 占星石 ─ 深紫底 + 細微星點 + 銀紫光暈
+           ─ 不顯示編號,僅以星光點綴神祕感
+        ============================================================= */
+        .pickable-card {
+            width: 40px; height: 40px;
+            border-radius: 50%;
+            position: relative;
+            background:
+                /* 微小星點(星空質感) */
+                radial-gradient(circle at 22% 35%, rgba(255,255,255,0.55) 0.5px, transparent 1.2px),
+                radial-gradient(circle at 78% 65%, rgba(255,255,255,0.45) 0.5px, transparent 1.2px),
+                radial-gradient(circle at 65% 28%, rgba(255,255,255,0.35) 0.4px, transparent 0.9px),
+                radial-gradient(circle at 35% 75%, rgba(255,255,255,0.30) 0.3px, transparent 0.8px),
+                /* 左上微紫高光 */
+                radial-gradient(circle at 30% 25%, rgba(167, 139, 250, 0.22) 0%, transparent 38%),
+                /* 主體深紫宇宙漸層 */
+                radial-gradient(circle at center, #2d1b4e 0%, #1a0f2e 65%, #0a0414 100%);
+            border: 2px solid #5b3b8c;
+            box-shadow:
+                inset 0 0 8px rgba(0, 0, 0, 0.60),
+                inset 0 1px 0 rgba(196, 181, 253, 0.18),
+                0 2px 6px rgba(0, 0, 0, 0.40);
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer;
+            transition: transform 0.18s, box-shadow 0.22s, border-color 0.22s;
+            user-select: none;
+            font-family: 'Noto Serif TC', serif;
+        }
+        /* 內圈紫光裝飾 */
+        .pickable-card::before {
+            content: '';
+            position: absolute;
+            top: 4px; left: 4px; right: 4px; bottom: 4px;
+            border-radius: 50%;
+            border: 1px solid rgba(196, 181, 253, 0.22);
+            pointer-events: none;
+        }
+        /* 中心點裝飾(未選時的星光) */
+        .pickable-card::after {
+            content: '✦';
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            color: rgba(196, 181, 253, 0.30);
+            font-size: 14px;
+            pointer-events: none;
+            transition: color 0.25s, transform 0.25s, opacity 0.25s;
+        }
+        .pickable-card:hover:not(:disabled) {
+            transform: translateY(-2px) scale(1.06);
+            border-color: #a78bfa;
+            box-shadow:
+                inset 0 0 8px rgba(0, 0, 0, 0.50),
+                inset 0 1px 0 rgba(196, 181, 253, 0.32),
+                0 4px 14px rgba(91, 33, 182, 0.55),
+                0 0 22px rgba(167, 139, 250, 0.55);
+        }
+        .pickable-card:hover:not(:disabled)::after {
+            color: rgba(224, 231, 255, 0.85);
+            transform: translate(-50%, -50%) rotate(20deg);
+        }
+        .pickable-card:active:not(:disabled) {
+            transform: translateY(0) scale(0.97);
+        }
+        .pickable-card:disabled {
+            cursor: not-allowed;
+        }
+        .pickable-card.locked {
+            opacity: 0.30;
+            filter: grayscale(0.55) brightness(0.65);
+        }
+        .pickable-card.selected {
+            background:
+                radial-gradient(circle at 22% 35%, rgba(255,255,255,0.7) 0.6px, transparent 1.4px),
+                radial-gradient(circle at 78% 65%, rgba(255,255,255,0.55) 0.6px, transparent 1.4px),
+                radial-gradient(circle at 65% 28%, rgba(255,255,255,0.5) 0.5px, transparent 1.1px),
+                radial-gradient(circle at 30% 25%, rgba(196, 181, 253, 0.45) 0%, transparent 42%),
+                radial-gradient(circle at center, #4c1d95 0%, #2a1057 65%, #150828 100%);
+            border: 2.5px solid #c4b5fd;
+            transform: scale(1.10);
+            opacity: 1 !important;
+            cursor: default;
+            box-shadow:
+                inset 0 0 12px rgba(0, 0, 0, 0.50),
+                inset 0 1px 0 rgba(255, 255, 255, 0.30),
+                0 0 22px rgba(196, 181, 253, 0.78),
+                0 0 38px rgba(124, 58, 237, 0.50);
+            animation: cardPickPop 0.40s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            filter: none;
+        }
+        .pickable-card.selected::before {
+            border: 1.5px solid rgba(245, 245, 255, 0.55);
+        }
+        .pickable-card.selected::after {
+            content: ''; /* 選中時隱藏星光,讓位給序號 ① */
+        }
+        .pickable-card.selected span {
+            color: #f5f3ff;
+            text-shadow: 0 0 10px rgba(196, 181, 253, 0.75), 0 1px 1px rgba(0, 0, 0, 0.6);
+        }
+        .pickable-card span {
+            color: #e0e7ff;
+            font-weight: 900;
+            text-shadow: 0 1px 1px rgba(0, 0, 0, 0.7);
+            line-height: 1;
+            position: relative;
+            z-index: 1;
+        }
+        @keyframes cardPickPop {
+            0%   { transform: scale(1.00); }
+            55%  { transform: scale(1.20); }
+            100% { transform: scale(1.10); }
+        }
+        @media (min-width: 640px) {
+            .pickable-card { width: 56px; height: 56px; }
+            .pickable-card::before {
+                top: 5px; left: 5px; right: 5px; bottom: 5px;
+            }
+            .pickable-card::after { font-size: 20px; }
+        }
+        /* 小螢幕(< 380px,iPhone SE 等)縮小棋幣,避免 grid-cols-8 橫向溢出 */
+        @media (max-width: 379px) {
+            .pickable-card { width: 32px; height: 32px; }
+            .pickable-card::after { font-size: 11px; }
+            .pickable-card span { font-size: 14px !important; }
+        }
+
+        /* === 凝神過場 === */
+        @keyframes ritualBreath {
+            0%, 100% { opacity: 0.85; transform: translate(-50%, -50%) scale(1.0); }
+            50%      { opacity: 1;    transform: translate(-50%, -50%) scale(1.04); }
+        }
+        .ritual-text {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            animation: ritualBreath 2.5s infinite ease-in-out;
+            pointer-events: none;
+        }
+
+        .text-red { color: #b91c1c; border-color: #fca5a5; }
+        .text-black { color: #1c1917; border-color: #a8a29e; }
+
+        .cat-btn { transition: all 0.3s; border: 1px solid #d6d3d1; }
+        .cat-btn.active { border-color: #7f1d1d; background-color: #fff1f2; transform: scale(1.02); box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.7); z-index: 100;
+            display: flex; align-items: center; justify-content: center;
+            backdrop-filter: blur(4px);
+        }
+
+        /* === 命盤全景: 8 個 mini-cross =================================
+           兩種樣式:
+           - 結果頁:.chart-mini-grid (垂直堆疊)
+           - 輸入頁:.input-period-list (橫向排版,標題在左、十字在右)
+        ============================================================= */
+        .chart-mini-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 10px;
+        }
+        .mini-cross {
+            padding: 10px 8px;
+            border-radius: 10px;
+            background: rgba(255,255,255,0.7);
+            border: 2px solid transparent;
+            cursor: pointer;
+            transition: all 0.2s;
+            overflow: hidden;
+        }
+        .mini-cross:hover {
+            background: rgba(255, 245, 245, 0.85);
+            border-color: rgba(185, 28, 28, 0.3);
+        }
+        .mini-cross.active {
+            border-color: #b91c1c;
+            background: rgba(255, 245, 245, 0.95);
+            box-shadow: 0 4px 16px rgba(185, 28, 28, 0.25);
+        }
+        .mini-cross-title {
+            font-size: 12px;
+            font-weight: 900;
+            color: #44403c;
+            text-align: center;
+            margin-bottom: 6px;
+            letter-spacing: 0.05em;
+        }
+        .mini-cross.active .mini-cross-title { color: #7f1d1d; }
+        .mini-cross-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 30px);
+            grid-template-rows: repeat(3, 30px);
+            gap: 3px;
+            justify-content: center;
+        }
+        .mini-piece {
+            width: 30px; height: 30px;
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 14px; font-weight: 900;
+            font-family: 'Noto Serif TC', serif;
+            background: linear-gradient(145deg, #ffffff, #f0e9d8);
+            border: 1.5px solid #d6cfb4;
+            box-shadow: 1px 1px 2px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.6);
+            transition: transform 0.15s, border-color 0.15s;
+            user-select: none;
+            box-sizing: border-box;
+        }
+        .mini-piece.red { color: #b91c1c; border-color: #f0a0a0; }
+        .mini-piece.black { color: #1c1917; border-color: #b8b3a8; }
+        .mini-piece.empty {
+            background: rgba(255,255,255,0.3);
+            border: 1.5px dashed #cfc8b5;
+            color: #b8b1a0;
+            font-size: 11px;
+            cursor: pointer;
+        }
+        .mini-piece.empty:hover {
+            border-color: #b91c1c;
+            background: rgba(255, 245, 245, 0.6);
+            transform: scale(1.06);
+        }
+        .mini-cross.center-glow .mini-piece-center {
+            box-shadow: 0 0 6px rgba(185,28,28,0.4), 1px 1px 2px rgba(0,0,0,0.1);
+        }
+
+        /* 輸入頁專用:每段橫向排版(標題+進度在左、十字在右) */
+        .input-period-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .input-period-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            background: rgba(255,255,255,0.7);
+            border: 1.5px solid #e7e5e4;
+            border-radius: 10px;
+        }
+        .input-period-row .info {
+            flex: 1 1 0;
+            min-width: 0;
+        }
+        .input-period-row .info .row-title {
+            font-size: 13px;
+            font-weight: 900;
+            color: #44403c;
+            line-height: 1.2;
+        }
+        .input-period-row .info .row-hint {
+            font-size: 10px;
+            color: #a8a29e;
+            margin-top: 2px;
+        }
+        .input-period-row .info .row-progress {
+            font-size: 11px;
+            margin-top: 4px;
+            font-weight: bold;
+        }
+        .input-period-row .info .row-progress.done { color: #16a34a; }
+        .input-period-row .info .row-progress.todo { color: #a8a29e; }
+        .input-period-row .cross-mini {
+            flex-shrink: 0;
+            display: grid;
+            grid-template-columns: repeat(3, 28px);
+            grid-template-rows: repeat(3, 28px);
+            gap: 2px;
+        }
+        .input-period-row .cross-mini .mini-piece {
+            width: 28px; height: 28px;
+            font-size: 13px;
+        }
+        .input-period-row .cross-mini .mini-piece.empty {
+            font-size: 10px;
+        }
+
+        /* === 棋子選取 modal === */
+        .picker-grid {
+            display: grid;
+            grid-template-columns: repeat(7, minmax(0, 1fr));
+            gap: 6px;
+        }
+        /* 小螢幕降為 4 欄,Modal 內容才不會被擠壓 */
+        @media (max-width: 379px) {
+            .picker-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+            .picker-piece-name { font-size: 15px !important; }
+            .picker-piece-count { font-size: 8px !important; }
+        }
+        .picker-piece {
+            aspect-ratio: 1 / 1;
+            border-radius: 50%;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            font-family: 'Noto Serif TC', serif;
+            background: linear-gradient(145deg, #ffffff, #f0e9d8);
+            border: 2px solid #d6cfb4;
+            box-shadow: 1px 2px 4px rgba(0,0,0,0.12);
+            cursor: pointer;
+            transition: transform 0.18s, box-shadow 0.18s, opacity 0.2s;
+            user-select: none;
+            position: relative;
+        }
+        .picker-piece.red { color: #b91c1c; border-color: #f0a0a0; }
+        .picker-piece.black { color: #1c1917; border-color: #a8a29e; }
+        .picker-piece:not(.disabled):hover {
+            transform: translateY(-2px) scale(1.05);
+            box-shadow: 2px 4px 10px rgba(0,0,0,0.18);
+        }
+        .picker-piece.disabled {
+            cursor: not-allowed;
+            opacity: 0.30;
+            filter: grayscale(0.6);
+        }
+        .picker-piece-name {
+            font-size: 18px; font-weight: 900;
+            line-height: 1;
+        }
+        .picker-piece-count {
+            font-size: 9px; font-weight: bold;
+            color: #78716c;
+            margin-top: 1px;
+            line-height: 1;
+        }
+        .picker-piece.red .picker-piece-count { color: #b45309; }
+
+        /* === 命盤垂直鏈(教材排版)============================== */
+        .chart-chain-wrap {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+        }
+        .chart-chain {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
+        }
+        .chain-row {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+            padding: 2px 0;
+            cursor: pointer;
+            transition: background 0.2s;
+            min-height: 44px;
+            width: 100%;
+        }
+        .chain-row.active {
+            background: rgba(254, 240, 235, 0.8);
+        }
+        .chain-row.active-edge {
+            background: rgba(254, 240, 235, 0.45);
+        }
+        .chain-piece {
+            width: 36px; height: 36px;
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 18px; font-weight: 900;
+            font-family: 'Noto Serif TC', serif;
+            background: linear-gradient(145deg,#ffffff,#f0e9d8);
+            border: 1.5px solid #d6cfb4;
+            box-shadow: 1px 1px 2px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.6);
+            user-select: none;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .chain-piece.red    { color:#b91c1c; border-color:#f0a0a0; }
+        .chain-piece.black  { color:#1c1917; border-color:#a8a29e; }
+        .chain-row.active .chain-piece,
+        .chain-row.active-edge .chain-piece {
+            transform: scale(1.1);
+            box-shadow: 0 0 8px rgba(185,28,28,0.45), 1px 2px 4px rgba(0,0,0,0.15);
+        }
+        @media (min-width: 640px) {
+            .chain-piece { width: 44px; height: 44px; font-size: 22px; }
+            .chain-row { min-height: 52px; gap: 10px; }
+        }
+        /* 段落標籤(左側) */
+        .chain-label {
+            position: absolute;
+            left: 0;
+            font-size: 11px;
+            font-weight: 900;
+            color: #78716c;
+            letter-spacing: 0.05em;
+            white-space: nowrap;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 4px;
+            transition: background 0.2s, color 0.2s;
+        }
+        .chain-label.active {
+            color: #7f1d1d;
+            background: rgba(254,226,226,0.8);
+        }
+        .chain-cycle-hint {
+            margin-top: 6px;
+            font-size: 11px;
+            color: #a8a29e;
+            font-style: italic;
+        }
+
+        /* === 命盤結果 accordion 段落(舊,保留以防其他地方用)====== */
+        .period-section {
+            border: 2px solid #e7e5e4;
+            border-radius: 10px;
+            background: rgba(255,255,255,0.7);
+            transition: border-color 0.3s, background 0.3s, padding 0.3s;
+            cursor: pointer;
+            padding: 8px 10px;
+        }
+        .period-section:not(.active):hover {
+            border-color: rgba(185, 28, 28, 0.35);
+            background: rgba(255, 245, 245, 0.85);
+        }
+        .period-section.active {
+            border-color: #b91c1c;
+            background: rgba(255, 250, 246, 0.95);
+            padding: 14px 12px 18px;
+            cursor: default;
+            box-shadow: 0 4px 16px rgba(185, 28, 28, 0.15);
+        }
+        .period-section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        .period-section-title {
+            font-size: 14px;
+            font-weight: 900;
+            color: #44403c;
+        }
+        .period-section.active .period-section-title {
+            font-size: 18px;
+            color: #7f1d1d;
+        }
+        .period-section-hint {
+            font-size: 11px;
+            color: #a8a29e;
+        }
+        .period-section.active .period-section-hint {
+            font-size: 13px;
+            color: #78716c;
+        }
+        .period-section-cross.small {
+            display: flex;
+            justify-content: flex-end;
+        }
+        .cross-small-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 28px);
+            grid-template-rows: repeat(3, 28px);
+            gap: 2px;
+            justify-content: center;
+        }
+        .cross-small-grid .mini-piece {
+            width: 28px; height: 28px;
+            font-size: 13px;
+        }
+        .cross-small-grid .mini-piece.empty {
+            font-size: 10px;
+        }
+        .period-section-cross.big {
+            margin: 8px auto 14px;
+        }
+        .period-section-narrative {
+            background: rgba(255, 255, 255, 0.85);
+            border-top: 2px solid #fee2e2;
+            padding-top: 14px;
+            margin-top: 6px;
+        }
+        /* 折疊版的 row 應該排成左標題、右十字 */
+        .period-section:not(.active) {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+        .period-section:not(.active) .period-section-header {
+            flex-direction: column;
+            align-items: flex-start;
+            margin-bottom: 0;
+        }
+        .period-section.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="root"></div>
+
+    <script src="vendor/js/app.js"></script>
+
+    <script>
+        // 註冊 Service Worker(離線運作 + APP 化基礎)
+        // 僅在 http(s) 下嘗試;file:// 開檔會自動跳過,避免無謂錯誤。
+        if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('service-worker.js').catch(() => {});
+            });
+            // 收到新 SW 啟用通知 → 強制 reload 一次,讓新 SW 立即接管當前頁面
+            // (避免使用者卡在舊 SW 的壞快取)
+            let didReloadForSW = false;
+            navigator.serviceWorker.addEventListener('message', (e) => {
+                if (e.data && e.data.type === 'SW_ACTIVATED' && !didReloadForSW) {
+                    didReloadForSW = true;
+                    location.reload();
+                }
+            });
+        }
+    </script>
+</body>
+</html>
