@@ -1,4 +1,5 @@
 name: Deploy site/ to GitHub Pages
+# Re-triggered after Pages source switched to GitHub Actions
 
 on:
   push:
