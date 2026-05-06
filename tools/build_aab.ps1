@@ -23,14 +23,27 @@ $env:JAVA_HOME         = "C:\Program Files\Android\Android Studio\jbr"
 $env:Path              = "$env:JAVA_HOME\bin;$env:Path"
 
 Write-Host "[1/5] Mirror android/ → $BuildRoot"
+# 注意:Copy-Item -Recurse 在某些 PowerShell 環境會靜默失敗(中文路徑時),用 xcopy 才穩
 if (Test-Path $BuildRoot) { cmd /c "rmdir /S /Q `"$BuildRoot`"" | Out-Null }
-Copy-Item -Recurse -Force "$ProjectRoot\android" $BuildRoot
+cmd /c "xcopy /E /I /Y /Q `"$ProjectRoot\android`" `"$BuildRoot`"" | Out-Null
 
 Write-Host "[2/5] Mirror @capacitor/android → $NodeMirror"
 $NodeMirrorParent = Split-Path $NodeMirror -Parent
 if (-not (Test-Path $NodeMirrorParent)) { New-Item -ItemType Directory -Path $NodeMirrorParent -Force | Out-Null }
-if (Test-Path $NodeMirror) { Remove-Item -Recurse -Force $NodeMirror }
-Copy-Item -Recurse -Force "$ProjectRoot\node_modules\@capacitor\android" $NodeMirror
+if (Test-Path $NodeMirror) { cmd /c "rmdir /S /Q `"$NodeMirror`"" | Out-Null }
+cmd /c "xcopy /E /I /Y /Q `"$ProjectRoot\node_modules\@capacitor\android`" `"$NodeMirror`"" | Out-Null
+
+# 額外鏡射任何 Capacitor 第三方 plugin(目前只有 capacitor-plugin-cdv-purchase)
+$ExtraPlugins = @('capacitor-plugin-cdv-purchase')
+foreach ($p in $ExtraPlugins) {
+    $src = "$ProjectRoot\node_modules\$p"
+    $dst = "C:\node_modules\$p"
+    if (Test-Path $src) {
+        Write-Host "  Mirror plugin $p → $dst"
+        if (Test-Path $dst) { cmd /c "rmdir /S /Q `"$dst`"" | Out-Null }
+        cmd /c "xcopy /E /I /Y /Q `"$src`" `"$dst`"" | Out-Null
+    }
+}
 
 Write-Host "[3/5] Fix local.properties (forward slashes for Java escapes)"
 "sdk.dir=$($env:ANDROID_HOME -replace '\\','/')" | Set-Content -Path "$BuildRoot\local.properties" -Encoding ASCII

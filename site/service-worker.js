@@ -1,4 +1,4 @@
-// 觀棋心徑 PWA Service Worker (v6 — narrative content polish round).
+// 觀棋心徑 PWA Service Worker (v7 — IAP 隨喜 + cdv-purchase vendor).
 //
 // Now that all dependencies (React, Tailwind, fonts) are vendored under
 // /vendor/, every request is same-origin. The SW is mostly belt-and-braces
@@ -6,7 +6,7 @@
 //
 // ⚠️ 部署規則:每次修改 index.html / app.js / 此檔本身,都把版本號 +1。
 
-const CACHE_VERSION = 'guanqi-v6';
+const CACHE_VERSION = 'guanqi-v7';
 
 const PRECACHE = [
   './',
@@ -15,6 +15,7 @@ const PRECACHE = [
   './vendor/js/tailwindcss.js',
   './vendor/js/react.production.min.js',
   './vendor/js/react-dom.production.min.js',
+  './vendor/js/cdv-purchase.js',
   './vendor/js/app.js',
   './vendor/css/noto-serif-tc.css',
   './icons/icon-192.png',

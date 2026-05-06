@@ -1752,6 +1752,13 @@
             const typeIntervalRef = useRef(null);
             const isMountedRef = useRef(true);
 
+            // ─── IAP 隨喜 (Google Play Billing 透過 cordova-plugin-purchase) ───
+            const [donateModal, setDonateModal] = useState(false);
+            const [donateMsg, setDonateMsg]     = useState(''); // '' | '處理中…' | '🙏 感謝您的隨喜!' | '購買失敗:…'
+            const [iapProducts, setIapProducts] = useState({}); // { donate_30: { price: 'NT$30' }, ... }
+            const [iapReady, setIapReady]       = useState(false);
+            const [isNative, setIsNative]       = useState(false); // 是否在 Capacitor APK 內(才能跑 IAP)
+
             useEffect(() => {
                 return () => {
                     isMountedRef.current = false;
@@ -1762,16 +1769,98 @@
                 };
             }, []);
 
+            // ─── IAP 初始化:Capacitor APK 環境才註冊;Web 環境忽略 ───
+            useEffect(() => {
+                const setupIap = () => {
+                    if (!window.CdvPurchase) return; // 純 web 沒有此物件
+                    setIsNative(true);
+                    const { store, ProductType, Platform, LogLevel } = window.CdvPurchase;
+                    store.verbosity = LogLevel.WARNING;
+
+                    store.register([
+                        { id: 'donate_30',  type: ProductType.CONSUMABLE, platform: Platform.GOOGLE_PLAY },
+                        { id: 'donate_100', type: ProductType.CONSUMABLE, platform: Platform.GOOGLE_PLAY },
+                        { id: 'donate_300', type: ProductType.CONSUMABLE, platform: Platform.GOOGLE_PLAY },
+                    ]);
+
+                    store.when()
+                        .productUpdated(p => {
+                            if (!isMountedRef.current) return;
+                            setIapProducts(prev => ({
+                                ...prev,
+                                [p.id]: { price: (p.pricing && p.pricing.price) || '' }
+                            }));
+                        })
+                        .approved(t => { t.finish(); })
+                        .finished(() => {
+                            if (!isMountedRef.current) return;
+                            setDonateMsg('🙏 感謝您的隨喜!');
+                        })
+                        .receiptUpdated(() => {})
+                        .receiptsReady(() => {});
+
+                    store.error(err => {
+                        if (!isMountedRef.current) return;
+                        // 6500 / 6504 系列大多是「使用者取消」,不顯示為失敗
+                        const code = err && err.code;
+                        if (code === 6500 || code === 6504 || code === 6505) {
+                            setDonateMsg('');
+                            return;
+                        }
+                        setDonateMsg(`購買失敗:${(err && err.message) || '未知錯誤'}`);
+                    });
+
+                    store.initialize([Platform.GOOGLE_PLAY])
+                        .then(() => { if (isMountedRef.current) setIapReady(true); })
+                        .catch(e => console.warn('[IAP] init failed', e));
+                };
+
+                // Capacitor 提供 cordova.js,deviceready 後 plugin 才掛上
+                if (window.cordova) {
+                    document.addEventListener('deviceready', setupIap, { once: true });
+                } else if (window.CdvPurchase) {
+                    setupIap();
+                }
+            }, []);
+
+            const handleDonate = (tier) => {
+                if (!isNative) {
+                    setDonateMsg('需在 Google Play 安裝的 App 中才能隨喜。');
+                    return;
+                }
+                if (!iapReady) {
+                    setDonateMsg('IAP 尚未就緒,請稍後再試。');
+                    return;
+                }
+                const { store } = window.CdvPurchase;
+                const product = store.get(`donate_${tier}`);
+                if (!product) {
+                    setDonateMsg('找不到此商品(請更新 App 至最新版)。');
+                    return;
+                }
+                const offer = product.getOffer();
+                if (!offer) {
+                    setDonateMsg('此商品暫時無法購買。');
+                    return;
+                }
+                setDonateMsg('處理中…');
+                offer.order().catch(err => {
+                    if (!isMountedRef.current) return;
+                    setDonateMsg(`購買失敗:${(err && err.message) || '取消'}`);
+                });
+            };
+
             // a11y:Esc 關閉任一開啟中的 Modal(優先順序:picker → contact → donate)
             useEffect(() => {
                 const onKey = (e) => {
                     if (e.key !== 'Escape') return;
-                    if (pickerSlot)            { setPickerSlot(null); return; }
-                    if (showContactModal)     { setShowContactModal(false); return; }
+                    if (pickerSlot)        { setPickerSlot(null); return; }
+                    if (showContactModal)  { setShowContactModal(false); return; }
+                    if (donateModal)       { setDonateModal(false); setDonateMsg(''); return; }
                 };
                 window.addEventListener('keydown', onKey);
                 return () => window.removeEventListener('keydown', onKey);
-            }, [pickerSlot, showContactModal]);
+            }, [pickerSlot, showContactModal, donateModal]);
 
             const getDeck = () => {
                 const deck = [];
@@ -2424,12 +2513,18 @@
                                         </svg>
                                         關於 Jacky
                                     </button>
-                                    <button onClick={handleConsult} className="w-full py-3 bg-[#06c755] text-white rounded-full font-bold shadow-lg hover:scale-105 transition active:scale-95 flex items-center justify-center gap-2">
+                                    <button onClick={handleConsult} className="w-full mb-3 py-3 bg-[#06c755] text-white rounded-full font-bold shadow-lg hover:scale-105 transition active:scale-95 flex items-center justify-center gap-2">
                                         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M22 10.5C22 5.25 17.5 1 12 1S2 5.25 2 10.5c0 4.7 3.65 8.6 8.53 9.3-.12.87-.45 2.26-1.12 3.1 0 0 4.12-.35 7.6-3.8A9.3 9.3 0 0 0 22 10.5z"/></svg>
                                         預約諮詢
                                     </button>
+                                    {isNative && (
+                                        <button onClick={() => { setDonateMsg(''); setDonateModal(true); }}
+                                            className="w-full mb-3 py-3 border-2 border-amber-300 bg-amber-50 text-amber-800 rounded-xl font-bold hover:bg-amber-100 transition active:scale-95 flex items-center justify-center gap-2">
+                                            <span>🙏</span> 隨喜支持
+                                        </button>
+                                    )}
                                     <button onClick={() => handleReset(false)}
-                                        className="w-full mt-3 py-3 border-2 border-dashed border-stone-300 text-stone-400 rounded-xl font-bold hover:bg-stone-50 hover:text-stone-600 transition active:scale-95">
+                                        className="w-full py-3 border-2 border-dashed border-stone-300 text-stone-400 rounded-xl font-bold hover:bg-stone-50 hover:text-stone-600 transition active:scale-95">
                                         ↺ 再卜一卦
                                     </button>
                                 </div>
@@ -2549,10 +2644,16 @@
                                         </svg>
                                         關於 Jacky
                                     </button>
-                                    <button onClick={handleConsult} className="w-full py-3 bg-[#06c755] text-white rounded-full font-bold shadow-lg hover:scale-105 transition active:scale-95 flex items-center justify-center gap-2">
+                                    <button onClick={handleConsult} className="w-full mb-3 py-3 bg-[#06c755] text-white rounded-full font-bold shadow-lg hover:scale-105 transition active:scale-95 flex items-center justify-center gap-2">
                                         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M22 10.5C22 5.25 17.5 1 12 1S2 5.25 2 10.5c0 4.7 3.65 8.6 8.53 9.3-.12.87-.45 2.26-1.12 3.1 0 0 4.12-.35 7.6-3.8A9.3 9.3 0 0 0 22 10.5z"/></svg>
                                         預約諮詢
                                     </button>
+                                    {isNative && (
+                                        <button onClick={() => { setDonateMsg(''); setDonateModal(true); }}
+                                            className="w-full py-3 border-2 border-amber-300 bg-amber-50 text-amber-800 rounded-xl font-bold hover:bg-amber-100 transition active:scale-95 flex items-center justify-center gap-2">
+                                            <span>🙏</span> 隨喜支持
+                                        </button>
+                                    )}
                                     <p className="text-center text-xs text-stone-400 mt-4 italic">
                                         命盤是一生的格局 ─ 推算後便不再重抽。<br/>
                                         歡迎切回上方的【單卦】,針對具體事項另行卜問。
@@ -2618,6 +2719,58 @@
                             </div>
                         );
                     })()}
+
+                    {/* === 隨喜 IAP Modal === */}
+                    {donateModal && (
+                        <div className="modal-overlay" onClick={() => { setDonateModal(false); setDonateMsg(''); }}>
+                            <div className="bg-white p-6 rounded-2xl shadow-2xl max-w-sm w-10/12 relative animate-pop" onClick={e => e.stopPropagation()}>
+                                <button className="absolute top-2 right-3 text-3xl text-stone-400 hover:text-stone-600"
+                                    onClick={() => { setDonateModal(false); setDonateMsg(''); }} aria-label="關閉">&times;</button>
+                                <h3 className="text-xl font-black text-stone-800 mb-1">🙏 隨喜支持</h3>
+                                <p className="text-xs text-stone-500 mb-5">如果這次解卦對您有幫助,歡迎隨意支持(完全自由,不影響卦象)</p>
+
+                                {!isNative && (
+                                    <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">
+                                        需在 Google Play 安裝的 App 中才能隨喜。網頁版請改點 [關於 Jacky] 或 [預約諮詢]。
+                                    </p>
+                                )}
+
+                                {isNative && (
+                                    <div className="space-y-2 mb-3">
+                                        {[
+                                            { tier: 30,  label: '一杯飲料', emoji: '☕' },
+                                            { tier: 100, label: '一頓便當', emoji: '🍱' },
+                                            { tier: 300, label: '一份心意', emoji: '🌹' }
+                                        ].map(({ tier, label, emoji }) => {
+                                            const product = iapProducts[`donate_${tier}`];
+                                            const priceStr = (product && product.price) || `NT$${tier}`;
+                                            const disabled = !iapReady || donateMsg === '處理中…';
+                                            return (
+                                                <button key={tier} onClick={() => handleDonate(tier)}
+                                                    disabled={disabled}
+                                                    className="w-full py-3 px-4 border-2 border-stone-200 hover:border-amber-400 rounded-xl flex items-center justify-between transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
+                                                    <span className="font-medium text-stone-700"><span className="mr-2 text-lg">{emoji}</span>{label}</span>
+                                                    <span className="font-black text-amber-700">{priceStr}</span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+
+                                {donateMsg && (
+                                    <p className={`text-center text-sm py-2 px-3 rounded mt-3 ${
+                                        donateMsg.indexOf('🙏') === 0 ? 'bg-green-50 text-green-700 font-bold' :
+                                        donateMsg.indexOf('失敗') >= 0  ? 'bg-red-50 text-red-700' :
+                                        'bg-stone-50 text-stone-600'
+                                    }`}>{donateMsg}</p>
+                                )}
+
+                                <p className="text-[11px] text-stone-400 text-center mt-4 leading-relaxed">
+                                    透過 Google Play 安全付款 ・ 隨喜 100% 用於系統維運與創作
+                                </p>
+                            </div>
+                        </div>
+                    )}
 
                     {showContactModal && (
                         <div className="modal-overlay" onClick={() => setShowContactModal(false)}>

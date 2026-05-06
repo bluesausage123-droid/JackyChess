@@ -56,6 +56,16 @@ def vendor_js() -> None:
     )
     fetch("https://cdn.tailwindcss.com", JS / "tailwindcss.js")
 
+    # capacitor-plugin-cdv-purchase 的 store.js(隨喜 IAP)
+    # 該檔在 var 範圍宣告 CdvPurchase,以 <script> 標籤載入即成 window.CdvPurchase
+    iap_src = ROOT / "node_modules" / "capacitor-plugin-cdv-purchase" / "www" / "store.js"
+    iap_dst = JS / "cdv-purchase.js"
+    if iap_src.exists():
+        iap_dst.write_text(iap_src.read_text(encoding="utf-8"), encoding="utf-8")
+        print(f"  cordova IAP store.js → {iap_dst.relative_to(ROOT)} ({iap_dst.stat().st_size // 1024} KB)")
+    else:
+        print(f"  !! IAP plugin not installed; run `npm install capacitor-plugin-cdv-purchase`")
+
 
 def vendor_fonts() -> None:
     print("[fonts] Noto Serif TC (400, 600, 900)")

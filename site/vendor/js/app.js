@@ -2035,6 +2035,14 @@ const FortuneTeller = () => {
   const [pickerSlot, setPickerSlot] = useState(null);
   const typeIntervalRef = useRef(null);
   const isMountedRef = useRef(true);
+
+  // ─── IAP 隨喜 (Google Play Billing 透過 cordova-plugin-purchase) ───
+  const [donateModal, setDonateModal] = useState(false);
+  const [donateMsg, setDonateMsg] = useState(''); // '' | '處理中…' | '🙏 感謝您的隨喜!' | '購買失敗:…'
+  const [iapProducts, setIapProducts] = useState({}); // { donate_30: { price: 'NT$30' }, ... }
+  const [iapReady, setIapReady] = useState(false);
+  const [isNative, setIsNative] = useState(false); // 是否在 Capacitor APK 內(才能跑 IAP)
+
   useEffect(() => {
     return () => {
       isMountedRef.current = false;
@@ -2044,6 +2052,98 @@ const FortuneTeller = () => {
       }
     };
   }, []);
+
+  // ─── IAP 初始化:Capacitor APK 環境才註冊;Web 環境忽略 ───
+  useEffect(() => {
+    const setupIap = () => {
+      if (!window.CdvPurchase) return; // 純 web 沒有此物件
+      setIsNative(true);
+      const {
+        store,
+        ProductType,
+        Platform,
+        LogLevel
+      } = window.CdvPurchase;
+      store.verbosity = LogLevel.WARNING;
+      store.register([{
+        id: 'donate_30',
+        type: ProductType.CONSUMABLE,
+        platform: Platform.GOOGLE_PLAY
+      }, {
+        id: 'donate_100',
+        type: ProductType.CONSUMABLE,
+        platform: Platform.GOOGLE_PLAY
+      }, {
+        id: 'donate_300',
+        type: ProductType.CONSUMABLE,
+        platform: Platform.GOOGLE_PLAY
+      }]);
+      store.when().productUpdated(p => {
+        if (!isMountedRef.current) return;
+        setIapProducts(prev => ({
+          ...prev,
+          [p.id]: {
+            price: p.pricing && p.pricing.price || ''
+          }
+        }));
+      }).approved(t => {
+        t.finish();
+      }).finished(() => {
+        if (!isMountedRef.current) return;
+        setDonateMsg('🙏 感謝您的隨喜!');
+      }).receiptUpdated(() => {}).receiptsReady(() => {});
+      store.error(err => {
+        if (!isMountedRef.current) return;
+        // 6500 / 6504 系列大多是「使用者取消」,不顯示為失敗
+        const code = err && err.code;
+        if (code === 6500 || code === 6504 || code === 6505) {
+          setDonateMsg('');
+          return;
+        }
+        setDonateMsg(`購買失敗:${err && err.message || '未知錯誤'}`);
+      });
+      store.initialize([Platform.GOOGLE_PLAY]).then(() => {
+        if (isMountedRef.current) setIapReady(true);
+      }).catch(e => console.warn('[IAP] init failed', e));
+    };
+
+    // Capacitor 提供 cordova.js,deviceready 後 plugin 才掛上
+    if (window.cordova) {
+      document.addEventListener('deviceready', setupIap, {
+        once: true
+      });
+    } else if (window.CdvPurchase) {
+      setupIap();
+    }
+  }, []);
+  const handleDonate = tier => {
+    if (!isNative) {
+      setDonateMsg('需在 Google Play 安裝的 App 中才能隨喜。');
+      return;
+    }
+    if (!iapReady) {
+      setDonateMsg('IAP 尚未就緒,請稍後再試。');
+      return;
+    }
+    const {
+      store
+    } = window.CdvPurchase;
+    const product = store.get(`donate_${tier}`);
+    if (!product) {
+      setDonateMsg('找不到此商品(請更新 App 至最新版)。');
+      return;
+    }
+    const offer = product.getOffer();
+    if (!offer) {
+      setDonateMsg('此商品暫時無法購買。');
+      return;
+    }
+    setDonateMsg('處理中…');
+    offer.order().catch(err => {
+      if (!isMountedRef.current) return;
+      setDonateMsg(`購買失敗:${err && err.message || '取消'}`);
+    });
+  };
 
   // a11y:Esc 關閉任一開啟中的 Modal(優先順序:picker → contact → donate)
   useEffect(() => {
@@ -2057,10 +2157,15 @@ const FortuneTeller = () => {
         setShowContactModal(false);
         return;
       }
+      if (donateModal) {
+        setDonateModal(false);
+        setDonateMsg('');
+        return;
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [pickerSlot, showContactModal]);
+  }, [pickerSlot, showContactModal, donateModal]);
   const getDeck = () => {
     const deck = [];
     const counts = {
@@ -2833,7 +2938,7 @@ const FortuneTeller = () => {
     y2: "8"
   })), "\u95DC\u65BC Jacky"), /*#__PURE__*/React.createElement("button", {
     onClick: handleConsult,
-    className: "w-full py-3 bg-[#06c755] text-white rounded-full font-bold shadow-lg hover:scale-105 transition active:scale-95 flex items-center justify-center gap-2"
+    className: "w-full mb-3 py-3 bg-[#06c755] text-white rounded-full font-bold shadow-lg hover:scale-105 transition active:scale-95 flex items-center justify-center gap-2"
   }, /*#__PURE__*/React.createElement("svg", {
     width: "20",
     height: "20",
@@ -2841,9 +2946,15 @@ const FortuneTeller = () => {
     fill: "currentColor"
   }, /*#__PURE__*/React.createElement("path", {
     d: "M22 10.5C22 5.25 17.5 1 12 1S2 5.25 2 10.5c0 4.7 3.65 8.6 8.53 9.3-.12.87-.45 2.26-1.12 3.1 0 0 4.12-.35 7.6-3.8A9.3 9.3 0 0 0 22 10.5z"
-  })), "\u9810\u7D04\u8AEE\u8A62"), /*#__PURE__*/React.createElement("button", {
+  })), "\u9810\u7D04\u8AEE\u8A62"), isNative && /*#__PURE__*/React.createElement("button", {
+    onClick: () => {
+      setDonateMsg('');
+      setDonateModal(true);
+    },
+    className: "w-full mb-3 py-3 border-2 border-amber-300 bg-amber-50 text-amber-800 rounded-xl font-bold hover:bg-amber-100 transition active:scale-95 flex items-center justify-center gap-2"
+  }, /*#__PURE__*/React.createElement("span", null, "\uD83D\uDE4F"), " \u96A8\u559C\u652F\u6301"), /*#__PURE__*/React.createElement("button", {
     onClick: () => handleReset(false),
-    className: "w-full mt-3 py-3 border-2 border-dashed border-stone-300 text-stone-400 rounded-xl font-bold hover:bg-stone-50 hover:text-stone-600 transition active:scale-95"
+    className: "w-full py-3 border-2 border-dashed border-stone-300 text-stone-400 rounded-xl font-bold hover:bg-stone-50 hover:text-stone-600 transition active:scale-95"
   }, "\u21BA \u518D\u535C\u4E00\u5366"))), stage === 'result' && mode === 'chart' && chartCrosses && (() => {
     const chartPosDef = POSITION_DEFS_CHART[`${gender}_${marital}`] || POSITION_DEFS_CHART.male_single;
     // 構建 17 行可視化資料(以教材排版)
@@ -2985,7 +3096,7 @@ const FortuneTeller = () => {
       y2: "8"
     })), "\u95DC\u65BC Jacky"), /*#__PURE__*/React.createElement("button", {
       onClick: handleConsult,
-      className: "w-full py-3 bg-[#06c755] text-white rounded-full font-bold shadow-lg hover:scale-105 transition active:scale-95 flex items-center justify-center gap-2"
+      className: "w-full mb-3 py-3 bg-[#06c755] text-white rounded-full font-bold shadow-lg hover:scale-105 transition active:scale-95 flex items-center justify-center gap-2"
     }, /*#__PURE__*/React.createElement("svg", {
       width: "20",
       height: "20",
@@ -2993,7 +3104,13 @@ const FortuneTeller = () => {
       fill: "currentColor"
     }, /*#__PURE__*/React.createElement("path", {
       d: "M22 10.5C22 5.25 17.5 1 12 1S2 5.25 2 10.5c0 4.7 3.65 8.6 8.53 9.3-.12.87-.45 2.26-1.12 3.1 0 0 4.12-.35 7.6-3.8A9.3 9.3 0 0 0 22 10.5z"
-    })), "\u9810\u7D04\u8AEE\u8A62"), /*#__PURE__*/React.createElement("p", {
+    })), "\u9810\u7D04\u8AEE\u8A62"), isNative && /*#__PURE__*/React.createElement("button", {
+      onClick: () => {
+        setDonateMsg('');
+        setDonateModal(true);
+      },
+      className: "w-full py-3 border-2 border-amber-300 bg-amber-50 text-amber-800 rounded-xl font-bold hover:bg-amber-100 transition active:scale-95 flex items-center justify-center gap-2"
+    }, /*#__PURE__*/React.createElement("span", null, "\uD83D\uDE4F"), " \u96A8\u559C\u652F\u6301"), /*#__PURE__*/React.createElement("p", {
       className: "text-center text-xs text-stone-400 mt-4 italic"
     }, "\u547D\u76E4\u662F\u4E00\u751F\u7684\u683C\u5C40 \u2500 \u63A8\u7B97\u5F8C\u4FBF\u4E0D\u518D\u91CD\u62BD\u3002", /*#__PURE__*/React.createElement("br", null), "\u6B61\u8FCE\u5207\u56DE\u4E0A\u65B9\u7684\u3010\u55AE\u5366\u3011,\u91DD\u5C0D\u5177\u9AD4\u4E8B\u9805\u53E6\u884C\u535C\u554F\u3002")));
   })(), pickerSlot && (() => {
@@ -3059,7 +3176,67 @@ const FortuneTeller = () => {
     }, "\u3010", periodDef?.label, "\u3011 / \u300C", POS_LABEL[pickerSlot.position], "\u300D\u4F4D"), /*#__PURE__*/React.createElement("p", {
       className: "text-[10px] text-stone-400 text-center mb-3"
     }, "\u6BCF\u9846\u68CB\u5B50\u4E0B\u65B9\u986F\u793A\u300C\u5269\u9918 / \u724C\u5EAB\u7E3D\u6578\u300D \u2500 \u7528\u5B8C\u5373\u7121\u6CD5\u518D\u9078"), renderRow(['r_king', 'r_guard', 'r_minister', 'r_rook', 'r_knight', 'r_cannon', 'r_pawn'], 'red'), renderRow(['b_king', 'b_guard', 'b_minister', 'b_rook', 'b_knight', 'b_cannon', 'b_pawn'], 'black')));
-  })(), showContactModal && /*#__PURE__*/React.createElement("div", {
+  })(), donateModal && /*#__PURE__*/React.createElement("div", {
+    className: "modal-overlay",
+    onClick: () => {
+      setDonateModal(false);
+      setDonateMsg('');
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "bg-white p-6 rounded-2xl shadow-2xl max-w-sm w-10/12 relative animate-pop",
+    onClick: e => e.stopPropagation()
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "absolute top-2 right-3 text-3xl text-stone-400 hover:text-stone-600",
+    onClick: () => {
+      setDonateModal(false);
+      setDonateMsg('');
+    },
+    "aria-label": "\u95DC\u9589"
+  }, "\xD7"), /*#__PURE__*/React.createElement("h3", {
+    className: "text-xl font-black text-stone-800 mb-1"
+  }, "\uD83D\uDE4F \u96A8\u559C\u652F\u6301"), /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-stone-500 mb-5"
+  }, "\u5982\u679C\u9019\u6B21\u89E3\u5366\u5C0D\u60A8\u6709\u5E6B\u52A9,\u6B61\u8FCE\u96A8\u610F\u652F\u6301(\u5B8C\u5168\u81EA\u7531,\u4E0D\u5F71\u97FF\u5366\u8C61)"), !isNative && /*#__PURE__*/React.createElement("p", {
+    className: "text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4"
+  }, "\u9700\u5728 Google Play \u5B89\u88DD\u7684 App \u4E2D\u624D\u80FD\u96A8\u559C\u3002\u7DB2\u9801\u7248\u8ACB\u6539\u9EDE [\u95DC\u65BC Jacky] \u6216 [\u9810\u7D04\u8AEE\u8A62]\u3002"), isNative && /*#__PURE__*/React.createElement("div", {
+    className: "space-y-2 mb-3"
+  }, [{
+    tier: 30,
+    label: '一杯飲料',
+    emoji: '☕'
+  }, {
+    tier: 100,
+    label: '一頓便當',
+    emoji: '🍱'
+  }, {
+    tier: 300,
+    label: '一份心意',
+    emoji: '🌹'
+  }].map(({
+    tier,
+    label,
+    emoji
+  }) => {
+    const product = iapProducts[`donate_${tier}`];
+    const priceStr = product && product.price || `NT$${tier}`;
+    const disabled = !iapReady || donateMsg === '處理中…';
+    return /*#__PURE__*/React.createElement("button", {
+      key: tier,
+      onClick: () => handleDonate(tier),
+      disabled: disabled,
+      className: "w-full py-3 px-4 border-2 border-stone-200 hover:border-amber-400 rounded-xl flex items-center justify-between transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "font-medium text-stone-700"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "mr-2 text-lg"
+    }, emoji), label), /*#__PURE__*/React.createElement("span", {
+      className: "font-black text-amber-700"
+    }, priceStr));
+  })), donateMsg && /*#__PURE__*/React.createElement("p", {
+    className: `text-center text-sm py-2 px-3 rounded mt-3 ${donateMsg.indexOf('🙏') === 0 ? 'bg-green-50 text-green-700 font-bold' : donateMsg.indexOf('失敗') >= 0 ? 'bg-red-50 text-red-700' : 'bg-stone-50 text-stone-600'}`
+  }, donateMsg), /*#__PURE__*/React.createElement("p", {
+    className: "text-[11px] text-stone-400 text-center mt-4 leading-relaxed"
+  }, "\u900F\u904E Google Play \u5B89\u5168\u4ED8\u6B3E \u30FB \u96A8\u559C 100% \u7528\u65BC\u7CFB\u7D71\u7DAD\u904B\u8207\u5275\u4F5C"))), showContactModal && /*#__PURE__*/React.createElement("div", {
     className: "modal-overlay",
     onClick: () => setShowContactModal(false)
   }, /*#__PURE__*/React.createElement("div", {

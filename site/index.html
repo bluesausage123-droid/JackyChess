@@ -711,6 +711,11 @@
 
     <div id="root"></div>
 
+    <!-- Google Play Billing 隨喜 (capacitor-plugin-cdv-purchase v13)
+         在 web 環境此檔仍可載入但 cordova.exec 不存在,IAP 功能會在 app.jsx 裡被 isNative 守住 -->
+    <script>window.CdvPurchaseCapacitor = { installed: true };</script>
+    <script src="vendor/js/cdv-purchase.js"></script>
+
     <script src="vendor/js/app.js"></script>
 
     <script>
