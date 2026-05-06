@@ -1,7 +1,7 @@
 ext {
     minSdkVersion = 23  // billing 8.3.0 requires API 23+
-    compileSdkVersion = 34
-    targetSdkVersion = 34
+    compileSdkVersion = 35
+    targetSdkVersion = 35  // Play Store 強制 (2026)
     androidxActivityVersion = '1.8.0'
     androidxAppCompatVersion = '1.6.1'
     androidxCoordinatorLayoutVersion = '1.2.0'
