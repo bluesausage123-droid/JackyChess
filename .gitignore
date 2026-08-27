@@ -5,8 +5,8 @@ android/keystore.properties
 # 任何 keystore 備份(本機路徑備份,放 backups/ 也別推上去)
 backups/
 
-# 工作日誌已於 2026-05-05 把 keystore 密碼置換為 SEE_PASSWORD_MANAGER 占位字,可公開
-# (若未來工作日誌再次寫入機密,記得補回擋住的規則)
+# 工作日誌含開發過程與內部判斷,本 repo 為 public,一律不推
+工作日誌.md
 
 # ─── 本機環境 ──────────────────────────────
 android/local.properties

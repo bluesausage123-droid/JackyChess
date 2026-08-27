@@ -29,7 +29,7 @@ npx cap sync android
 `android/keystore/guanqi-release.jks` 是這個 App 的**唯一身分**。
 
 - **遺失就無法更新 Play Store 上的這個 App**(只能改包名重發)
-- 密碼:`SEE_PASSWORD_MANAGER`(別忘了改強密碼,並用 1Password / Bitwarden 備份)
+- 密碼:`SEE_PASSWORD_MANAGER`(實際密碼只存密碼管理器,不寫進任何檔案)
 - 強烈建議:把 `keystore/` 整個資料夾上傳到加密雲碟(Drive / Dropbox)備份
 
 如果開了 Google Play App Signing,Google 會幫你保管 production key,但你還是得保管好 upload key(就是這把)。
